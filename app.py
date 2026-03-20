@@ -331,13 +331,18 @@ def processar_rotas(arquivo_excel):
     # INTELIGÊNCIA DE FILA DA DOCA (Evitar carregamento simultâneo)
     # =========================================================
     intervalos_doca = []
+    
+    # GERA UM ID ÚNICO COM BASE NO RELÓGIO (Evita o erro duplicate labels)
+    run_id = str(int(time.time() * 1000)) 
+    
     for v in range(data['num_vehicles']):
         start_v = time_dim.CumulVar(routing.Start(v))
         is_active_v = routing.NextVar(routing.Start(v)) != routing.End(v)
         
         inicio_carregamento = solver.Sum([start_v, -45 * is_active_v])
         
-        intervalo_opcional = solver.IntervalVar(0, 1440, 45, 45, 0, 1440, 0, 1, f"carregamento_opt_{v}")
+        # As variáveis agora carregam o ID Único para evitar repetição na memória
+        intervalo_opcional = solver.IntervalVar(0, 1440, 45, 45, 0, 1440, 0, 1, f"carregamento_opt_{v}_{run_id}")
         solver.Add(intervalo_opcional.PerformedExpr() == is_active_v)
         solver.Add(intervalo_opcional.StartExpr() == inicio_carregamento.Var())
 
@@ -347,8 +352,8 @@ def processar_rotas(arquivo_excel):
         for p_start, p_end in data['puxadas']:
             solver.Add(start_v <= (p_start - 45) + start_v >= p_end + (1 - is_active_v) >= 1)
 
-    # Adiciona a restrição mestre: Nenhum intervalo de carregamento pode se sobrepor!
-    solver.Add(solver.DisjunctiveConstraint(intervalos_doca, "Fila_da_Doca"))
+    # Adiciona a restrição mestre com nome inédito
+    solver.Add(solver.DisjunctiveConstraint(intervalos_doca, f"Fila_da_Doca_{run_id}"))
 
     params = pywrapcp.DefaultRoutingSearchParameters()
     params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
@@ -405,6 +410,7 @@ def processar_rotas(arquivo_excel):
                 rota_coords.append((lon_lat[1], lon_lat[0]))
 
                 if n_idx == 0: 
+                    # Com a fila da doca, a saída já está no horário exato calculado pelo otimizador
                     hora_partida = hora
                     min_partida = minuto
                     dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{hora_partida:02d}:{min_partida:02d}", 'Ação': 'SAÍDA DA BASE', 'NF': '-', 'Cervejaria': '-', 'Cliente': 'BASE DA EMPRESA', 'Bairro': 'BASE', 'Peso (kg)': f"{carga_atual} (Total Carregado)"})
