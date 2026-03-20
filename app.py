@@ -339,7 +339,6 @@ def processar_rotas(arquivo_excel):
         
         inicio_carregamento = solver.Sum([start_v, -45 * is_active_v])
         
-        # AQUI ESTÁ A CORREÇÃO: Usando a função FixedDurationIntervalVar que aceita exatamente os 4 parâmetros
         intervalo_opcional = solver.FixedDurationIntervalVar(0, 1440, 45, True, f"carregamento_opt_{v}_{run_id}")
         
         solver.Add(intervalo_opcional.PerformedExpr() == is_active_v)
@@ -451,20 +450,16 @@ def processar_rotas(arquivo_excel):
 # FRONTEND / INTERFACE DE USUÁRIO (UI)
 # =========================================================
 
-
 # Centraliza a Logo da STPP no topo da tela
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     try:
         st.image("logo.png", use_container_width=True)
     except:
-        pass # Se esquecer de subir a imagem, o site não quebra
+        pass
 
 st.markdown("<h1 style='text-align: center;'>🚛 Roteirizador Web</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Carregue a planilha de <b>pedidos e frota</b> para desenhar as rotas automaticamente.</p>", unsafe_allow_html=True)
-
-arquivo_upload = st.file_uploader("Arraste a sua planilha Excel (romaneio_teste.xlsx) aqui", type=["xlsx"])
-st.markdown("Carregue a planilha de **pedidos e frota** para desenhar as rotas automaticamente.")
 
 arquivo_upload = st.file_uploader("Arraste a sua planilha Excel (romaneio_teste.xlsx) aqui", type=["xlsx"])
 
