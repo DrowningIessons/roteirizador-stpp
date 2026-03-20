@@ -76,10 +76,14 @@ def traduzir_janela(texto_excel):
 def traduzir_hora_inicio(texto_hora):
     try:
         if pd.isna(texto_hora) or str(texto_hora).strip() == '': return 0
-        num = re.findall(r'\d+', str(texto_hora))
-        if num: return max(0, (int(num[0]) - 8) * 60)
-    except: pass
-    return 0
+        if type(texto_hora).__name__ == 'time':
+            return max(0, (texto_hora.hour * 60 + texto_hora.minute) - 480)
+        texto = str(texto_hora).lower().replace('h', ':')
+        nums = re.findall(r'\d+', texto)
+        if len(nums) >= 2: return max(0, (int(nums[0]) * 60 + int(nums[1])) - 480)
+        elif len(nums) == 1: return max(0, (int(nums[0]) * 60) - 480)
+        return 0
+    except: return 0
 
 def traduzir_hora_exata(texto_hora):
     try:
@@ -322,11 +326,29 @@ def processar_rotas(arquivo_excel):
         routing.AddVariableMinimizedByFinalizer(time_dim.CumulVar(routing.End(v)))
 
     solver = routing.solver()
-    for i in range(data['num_vehicles']):
-        start_i = time_dim.CumulVar(routing.Start(i))
-        is_active_i = routing.NextVar(routing.Start(i)) != routing.End(i)
+    
+    # =========================================================
+    # INTELIGÊNCIA DE FILA DA DOCA (Evitar carregamento simultâneo)
+    # =========================================================
+    intervalos_doca = []
+    for v in range(data['num_vehicles']):
+        start_v = time_dim.CumulVar(routing.Start(v))
+        is_active_v = routing.NextVar(routing.Start(v)) != routing.End(v)
+        
+        inicio_carregamento = solver.Sum([start_v, -45 * is_active_v])
+        
+        intervalo_opcional = solver.IntervalVar(0, 1440, 45, 45, 0, 1440, 0, 1, f"carregamento_opt_{v}")
+        solver.Add(intervalo_opcional.PerformedExpr() == is_active_v)
+        solver.Add(intervalo_opcional.StartExpr() == inicio_carregamento.Var())
+
+        intervalos_doca.append(intervalo_opcional)
+
+        # Regras das Puxadas (A doca não pode liberar ninguém nestes horários)
         for p_start, p_end in data['puxadas']:
-            solver.Add(start_i <= (p_start - 45) + start_i >= p_end + (1 - is_active_i) >= 1)
+            solver.Add(start_v <= (p_start - 45) + start_v >= p_end + (1 - is_active_v) >= 1)
+
+    # Adiciona a restrição mestre: Nenhum intervalo de carregamento pode se sobrepor!
+    solver.Add(solver.DisjunctiveConstraint(intervalos_doca, "Fila_da_Doca"))
 
     params = pywrapcp.DefaultRoutingSearchParameters()
     params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
@@ -382,7 +404,8 @@ def processar_rotas(arquivo_excel):
                 rota_coords.append((lon_lat[1], lon_lat[0]))
 
                 if n_idx == 0: 
-                    hora_partida, min_partida = (min_totais + 45) // 60 % 24, (min_totais + 45) % 60
+                    # Com a fila da doca, a saída já está no horário exato calculado pelo otimizador
+                    hora_partida, min_partida = hora, minuto
                     dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{hora_partida:02d}:{min_partida:02d}", 'Ação': 'SAÍDA DA BASE', 'NF': '-', 'Cervejaria': '-', 'Cliente': 'BASE DA EMPRESA', 'Bairro': 'BASE', 'Peso (kg)': f"{carga_atual} (Total Carregado)"})
                 else:
                     peso, tipo = data['pesos_reais'][n_idx], data['tipos'][n_idx]
