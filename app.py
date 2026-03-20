@@ -331,8 +331,6 @@ def processar_rotas(arquivo_excel):
     # INTELIGÊNCIA DE FILA DA DOCA (Evitar carregamento simultâneo)
     # =========================================================
     intervalos_doca = []
-    
-    # GERA UM ID ÚNICO COM BASE NO RELÓGIO (Evita o erro duplicate labels)
     run_id = str(int(time.time() * 1000)) 
     
     for v in range(data['num_vehicles']):
@@ -341,18 +339,18 @@ def processar_rotas(arquivo_excel):
         
         inicio_carregamento = solver.Sum([start_v, -45 * is_active_v])
         
-        # As variáveis agora carregam o ID Único para evitar repetição na memória
-        intervalo_opcional = solver.IntervalVar(0, 1440, 45, 45, 0, 1440, 0, 1, f"carregamento_opt_{v}_{run_id}")
+        # AQUI ESTÁ A CORREÇÃO: Usando a função FixedDurationIntervalVar que aceita exatamente os 4 parâmetros
+        intervalo_opcional = solver.FixedDurationIntervalVar(0, 1440, 45, True, f"carregamento_opt_{v}_{run_id}")
+        
         solver.Add(intervalo_opcional.PerformedExpr() == is_active_v)
         solver.Add(intervalo_opcional.StartExpr() == inicio_carregamento.Var())
 
         intervalos_doca.append(intervalo_opcional)
 
-        # Regras das Puxadas (A doca não pode liberar ninguém nestes horários)
+        # Regras das Puxadas
         for p_start, p_end in data['puxadas']:
             solver.Add(start_v <= (p_start - 45) + start_v >= p_end + (1 - is_active_v) >= 1)
 
-    # Adiciona a restrição mestre com nome inédito
     solver.Add(solver.DisjunctiveConstraint(intervalos_doca, f"Fila_da_Doca_{run_id}"))
 
     params = pywrapcp.DefaultRoutingSearchParameters()
