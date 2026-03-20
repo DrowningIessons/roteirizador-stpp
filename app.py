@@ -397,26 +397,30 @@ def processar_rotas(arquivo_excel):
             while not routing.IsEnd(index):
                 time_var = time_dim.CumulVar(index)
                 n_idx = manager.IndexToNode(index)
-                min_totais = (8 * 60) + sol.Min(time_var)
-                hora, minuto = (min_totais // 60) % 24, min_totais % 60
+                min_totais = int((8 * 60) + sol.Min(time_var))
+                hora = int((min_totais // 60) % 24)
+                minuto = int(min_totais % 60)
                 
                 lon_lat = data['coordenadas'][data['locations'][n_idx]]
                 rota_coords.append((lon_lat[1], lon_lat[0]))
 
                 if n_idx == 0: 
-                    # Com a fila da doca, a saída já está no horário exato calculado pelo otimizador
-                    hora_partida, min_partida = hora, minuto
+                    hora_partida = hora
+                    min_partida = minuto
                     dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{hora_partida:02d}:{min_partida:02d}", 'Ação': 'SAÍDA DA BASE', 'NF': '-', 'Cervejaria': '-', 'Cliente': 'BASE DA EMPRESA', 'Bairro': 'BASE', 'Peso (kg)': f"{carga_atual} (Total Carregado)"})
                 else:
-                    peso, tipo = data['pesos_reais'][n_idx], data['tipos'][n_idx]
+                    peso = data['pesos_reais'][n_idx]
+                    tipo = data['tipos'][n_idx]
                     if tipo == 'ENTREGA': carga_atual -= peso
                     else: carga_atual += peso
                     dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{hora:02d}:{minuto:02d}", 'Ação': tipo, 'NF': str(data['nfs'][n_idx]).split('.')[0], 'Cervejaria': data['cervejarias'][n_idx], 'Cliente': data['nomes_clientes'][n_idx].title(), 'Bairro': data['bairros_exatos'][n_idx].title(), 'Peso (kg)': peso})
                 index = sol.Value(routing.NextVar(index))
                 
             time_var = time_dim.CumulVar(index)
-            min_totais = (8 * 60) + sol.Min(time_var)
-            dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{(min_totais // 60) % 24:02d}:{min_totais % 60:02d}", 'Ação': 'FIM DO EXPEDIENTE', 'NF': '-', 'Cervejaria': '-', 'Cliente': 'MOTORISTA LIBERADO', 'Bairro': '-', 'Peso (kg)': f"{carga_atual} (Vazios)"})
+            min_totais = int((8 * 60) + sol.Min(time_var))
+            hora_fim = int((min_totais // 60) % 24)
+            min_fim = int(min_totais % 60)
+            dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{hora_fim:02d}:{min_fim:02d}", 'Ação': 'FIM DO EXPEDIENTE', 'NF': '-', 'Cervejaria': '-', 'Cliente': 'MOTORISTA LIBERADO', 'Bairro': '-', 'Peso (kg)': f"{carga_atual} (Vazios)"})
             dados_excel.append({k: "" for k in dados_excel[0].keys()})
             
             if rota_coords:
