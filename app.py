@@ -32,6 +32,13 @@ def limpar_nome_cliente(nome):
         nome = re.sub(termo, '', nome)
     return re.sub(r'\s+', ' ', nome).strip()
 
+def limpar_bairro(bairro_cru):
+    b = remover_acentos(str(bairro_cru))
+    # Limpeza de variações que atrapalham o reconhecimento
+    b = b.replace('/ nit', '').replace('/nit', '').replace(' (jacarepagua)', '').strip()
+    if b == "freguesia jacarepagua": return "freguesia"
+    return b
+
 def limpar_peso(valor_excel):
     try:
         if pd.isna(valor_excel): return 0
@@ -101,12 +108,12 @@ def traduzir_hora_exata(texto_hora):
 # 2. O MOTOR GEOGRÁFICO & DICIONÁRIOS ATUALIZADOS
 # =========================================================
 MACRO_ZONAS = {
-    'zs': ['botafogo', 'copacabana', 'ipanema', 'leblon', 'flamengo', 'laranjeiras', 'humaita', 'gloria', 'gavea', 'jardim botanico', 'sao conrado', 'lapa', 'vidigal', 'catete', 'urca', 'lagoa', 'leme'],
-    'zn': ['tijuca', 'maracana', 'meier', 'bonsucesso', 'benfica', 'vila isabel', 'olaria', 'maria da graca', 'riachuelo', 'cascadura', 'cachambi', 'andarai', 'engenho de dentro', 'jardim guanabara / ilha', 'jardim guanabara', 'higienopolis'],
-    'zo': ['barra da tijuca', 'recreio dos bandeirantes', 'recreio', 'jacarepagua', 'freguesia', 'itanhanga', 'freguesia (jacarepagua)', 'joa'],
+    'zs': ['botafogo', 'copacabana', 'ipanema', 'leblon', 'flamengo', 'laranjeiras', 'humaita', 'gloria', 'gavea', 'jardim botanico', 'sao conrado', 'lapa', 'vidigal', 'catete', 'urca', 'lagoa', 'leme', 'parque do flamengo'],
+    'zn': ['tijuca', 'maracana', 'meier', 'bonsucesso', 'benfica', 'vila isabel', 'olaria', 'maria da graca', 'riachuelo', 'cascadura', 'cachambi', 'andarai', 'engenho de dentro', 'jardim guanabara', 'higienopolis', 'vicente de carvalho', 'todos os santos', 'iraja'],
+    'zo': ['barra da tijuca', 'recreio dos bandeirantes', 'recreio', 'jacarepagua', 'freguesia', 'itanhanga', 'joa', 'anil', 'grumari'],
     'centro': ['centro', 'santa teresa', 'saude', 'gamboa'],
-    'niteroi': ['niteroi', 'icarai', 'sao francisco', 'piratininga', 'santa rosa', 'centro / nit', 'icarai / nit', 'santa rosa / nit', 'piratininga / nit', 'sao francisco / nit'],
-    'baixada': ['sao joao de meriti', 'centro / sao joao m.', 'centro / sao joao']
+    'niteroi': ['niteroi', 'icarai', 'sao francisco', 'piratininga', 'santa rosa', 'varzea das mocas'],
+    'baixada': ['sao joao de meriti']
 }
 
 COORDENADAS_RJ = {
@@ -119,19 +126,19 @@ COORDENADAS_RJ = {
     'vila isabel': (-43.2425, -22.9147), 'sao conrado': (-43.2653, -22.9922), 'olaria': (-43.2633, -22.8447), 'icarai': (-43.1075, -22.9056),
     'sao francisco': (-43.0903, -22.9253), 'piratininga': (-43.0647, -22.9492), 'maria da graca': (-43.2611, -22.8858), 'riachuelo': (-43.2569, -22.8994),
     'cascadura': (-43.3236, -22.8864), 'santa teresa': (-43.1872, -22.9272), 'vidigal': (-43.2356, -22.9933), 'santa rosa': (-43.1064, -22.9008),
-    'santa rosa / nit': (-43.1064, -22.9008), 'centro / nit': (-43.1219, -22.8831), 'icarai / nit': (-43.1075, -22.9056), 'sao francisco / nit': (-43.0903, -22.9253),
-    'piratininga / nit': (-43.0647, -22.9492), 'catete': (-43.1764, -22.9275), 'urca': (-43.1667, -22.95), 'lagoa': (-43.2058, -22.9722),
-    'leme': (-43.1714, -22.9622), 'freguesia (jacarepagua)': (-43.3425, -22.9403), 'cachambi': (-43.2781, -22.8906), 'andarai': (-43.2503, -22.9264), 
-    'engenho de dentro': (-43.2953, -22.8953), 'jardim guanabara / ilha': (-43.2017, -22.8167), 'jardim guanabara': (-43.2017, -22.8167),
-    'higienopolis': (-43.2614, -22.8711), 'saude': (-43.1844, -22.8958), 'gamboa': (-43.1933, -22.8972), 'joa': (-43.2917, -23.0133), 
-    'centro / sao joao m.': (-43.3719, -22.8028), 'centro / sao joao': (-43.3719, -22.8028), 'sao joao de meriti': (-43.3719, -22.8028)
+    'catete': (-43.1764, -22.9275), 'urca': (-43.1667, -22.95), 'lagoa': (-43.2058, -22.9722), 'leme': (-43.1714, -22.9622),
+    'cachambi': (-43.2781, -22.8906), 'andarai': (-43.2503, -22.9264), 'engenho de dentro': (-43.2953, -22.8953),
+    'jardim guanabara': (-43.2017, -22.8167), 'higienopolis': (-43.2614, -22.8711), 'saude': (-43.1844, -22.8958), 'gamboa': (-43.1933, -22.8972), 
+    'joa': (-43.2917, -23.0133), 'sao joao de meriti': (-43.3719, -22.8028),
+    'anil': (-43.3364, -22.9567), 'grumari': (-43.5208, -23.0483), 'vicente de carvalho': (-43.3131, -22.8522),
+    'todos os santos': (-43.2808, -22.8953), 'iraja': (-43.3267, -22.8278), 'varzea das mocas': (-43.0181, -22.8942), 'parque do flamengo': (-43.1741, -22.9328)
 }
 
 def obter_coordenadas(bairro_exato):
-    bairro_limpo = remover_acentos(bairro_exato.split(',')[0].strip())
+    bairro_limpo = limpar_bairro(bairro_exato.split(',')[0])
     if bairro_limpo in COORDENADAS_RJ: return COORDENADAS_RJ[bairro_limpo][0], COORDENADAS_RJ[bairro_limpo][1]
     try:
-        r = requests.get(f"https://nominatim.openstreetmap.org/search?q={bairro_exato}, Rio de Janeiro, Brasil&format=json&limit=1", headers={'User-Agent': 'STPP_Web/1.0'})
+        r = requests.get(f"https://nominatim.openstreetmap.org/search?q={bairro_exato}, Rio de Janeiro, Brasil&format=json&limit=1", headers={'User-Agent': 'STPP_Web/1.0'}, timeout=10)
         dados = r.json()
         if dados: 
             time.sleep(1)
@@ -142,7 +149,7 @@ def obter_coordenadas(bairro_exato):
 def gerar_matriz_osrm(coordenadas):
     coords_str = ";".join([f"{lon},{lat}" for lon, lat in coordenadas])
     try:
-        r = requests.get(f"http://router.project-osrm.org/table/v1/driving/{coords_str}?annotations=duration")
+        r = requests.get(f"http://router.project-osrm.org/table/v1/driving/{coords_str}?annotations=duration", timeout=15)
         dados = r.json()
         if dados.get('code') == 'Ok': return [[int((val / 60) * 3) for val in row] for row in dados['durations']]
     except: pass
@@ -187,21 +194,29 @@ def processar_rotas(arquivo_excel):
         blon, blat = obter_coordenadas(bairro)
         if not blon: blon, blat = lon_base + 0.05, lat_base + 0.05 
         coordenadas.append((blon, blat))
-        mapa_indices[remover_acentos(bairro)] = i + 1
+        mapa_indices[limpar_bairro(bairro)] = i + 1
         progress_bar.progress((i + 1) / len(bairros_unicos) * 0.4)
 
     status_text.text("🚦 Calculando rotas de trânsito reais...")
     matriz_tempos_real = gerar_matriz_osrm(coordenadas)
-    if not matriz_tempos_real: return None, "Falha no servidor de trânsito OSRM.", []
+    
+    if not matriz_tempos_real: 
+        return None, "Servidor de trânsito (OSRM) está fora do ar ou não respondeu a tempo.", []
+    
     progress_bar.progress(0.6)
 
-    data = {'num_vehicles': len(frota_ativa), 'motoristas': [], 'veiculos': [], 'vehicle_capacities': [], 'vehicle_costs': [], 'vehicle_start_times': [], 'vehicle_preferences': []}
+    data = {'motoristas': [], 'veiculos': [], 'vehicle_capacities': [], 'vehicle_costs': [], 'vehicle_start_times': [], 'vehicle_preferences': []}
+    
+    # ---------------------------------------------------------
+    # NOVIDADE: CLONAGEM DE FROTA (O SEGUNDO TIRO)
+    # ---------------------------------------------------------
     for _, row in frota_ativa.iterrows():
-        data['motoristas'].append(str(row['motorista']).title())
-        data['veiculos'].append(str(row['veiculo']).title())
-        data['vehicle_capacities'].append(int(pd.to_numeric(row['capacidade'], errors='coerce')))
-        data['vehicle_start_times'].append(traduzir_hora_inicio(row['inicio']))
-        data['vehicle_costs'].append(100 if int(pd.to_numeric(row.get('prioridade', 1), errors='coerce')) == 1 else 100000)
+        mot = str(row['motorista']).title()
+        veic = str(row['veiculo']).title()
+        cap = int(pd.to_numeric(row['capacidade'], errors='coerce'))
+        start_t = traduzir_hora_inicio(row['inicio'])
+        cost = 100 if int(pd.to_numeric(row.get('prioridade', 1), errors='coerce')) == 1 else 100000
+        
         prefs = set()
         col_pref = 'preferência' if 'preferência' in frota_ativa.columns else 'preferencia' if 'preferencia' in frota_ativa.columns else None
         if col_pref and str(row[col_pref]).strip() != 'nan':
@@ -210,7 +225,24 @@ def processar_rotas(arquivo_excel):
                 if z in MACRO_ZONAS:
                     for bm in MACRO_ZONAS[z]:
                         if bm in mapa_indices: prefs.add(mapa_indices[bm])
+
+        # Cria a Viagem 1 (Prioridade Total)
+        data['motoristas'].append(f"{mot} [Viagem 1]")
+        data['veiculos'].append(veic)
+        data['vehicle_capacities'].append(cap)
+        data['vehicle_start_times'].append(start_t)
+        data['vehicle_costs'].append(cost)
         data['vehicle_preferences'].append(prefs)
+
+        # Cria a Viagem 2 (Segundo Tiro)
+        data['motoristas'].append(f"{mot} [Viagem 2]")
+        data['veiculos'].append(veic)
+        data['vehicle_capacities'].append(cap)
+        data['vehicle_start_times'].append(start_t) # O solver vai amarrar isso depois
+        data['vehicle_costs'].append(cost + 200) # Custa um pouco mais usar o segundo tiro para ele priorizar encher a Viagem 1
+        data['vehicle_preferences'].append(prefs)
+
+    data['num_vehicles'] = len(data['motoristas'])
 
     data['puxadas'] = puxadas
     data['time_matrix'] = matriz_tempos_real
@@ -230,7 +262,8 @@ def processar_rotas(arquivo_excel):
     
     clientes_vistos = [] 
     for _, row in df_pedidos.iterrows():
-        bairro = remover_acentos(str(row['bairro']))
+        bairro_cru = str(row['bairro'])
+        bairro_limpo = limpar_bairro(bairro_cru)
         peso = limpar_peso(row['peso'])
         tipo = str(row['tipo']).strip().upper() if 'tipo' in df_pedidos.columns and not pd.isna(row['tipo']) else 'ENTREGA'
         cliente_cru = str(row['cliente']).strip()
@@ -238,19 +271,19 @@ def processar_rotas(arquivo_excel):
         
         ja_visto = False
         for c_visto, b_visto in clientes_vistos:
-            if bairro == b_visto and (cliente_limpo == c_visto or cliente_limpo in c_visto or c_visto in cliente_limpo):
+            if bairro_limpo == b_visto and (cliente_limpo == c_visto or cliente_limpo in c_visto or c_visto in cliente_limpo):
                 ja_visto = True; break
         
         tempo_servico = 2 if ja_visto else 15
-        if not ja_visto: clientes_vistos.append((cliente_limpo, bairro))
+        if not ja_visto: clientes_vistos.append((cliente_limpo, bairro_limpo))
             
         macro_do_pedido = 'desconhecida'
         for mz, lista_bairros in MACRO_ZONAS.items():
-            if bairro in lista_bairros: macro_do_pedido = mz; break
+            if bairro_limpo in lista_bairros: macro_do_pedido = mz; break
         
         data['demands'].append(peso if tipo == 'COLETA' else -peso)
-        data['locations'].append(mapa_indices.get(bairro, 0)) 
-        data['bairros_exatos'].append(bairro)
+        data['locations'].append(mapa_indices.get(bairro_limpo, 0)) 
+        data['bairros_exatos'].append(bairro_cru)
         data['zonas_exatas'].append(macro_do_pedido)
         data['pesos_reais'].append(peso)
         data['tipos'].append(tipo)
@@ -263,7 +296,7 @@ def processar_rotas(arquivo_excel):
     
     data['depot'] = 0
 
-    status_text.text("🧠 Otimizando a matemática de rotas...")
+    status_text.text("🧠 Otimizando a matemática de rotas (Múltiplos Tiros)...")
     manager = pywrapcp.RoutingIndexManager(len(data['time_windows']), data['num_vehicles'], data['depot'])
     routing = pywrapcp.RoutingModel(manager)
 
@@ -288,11 +321,17 @@ def processar_rotas(arquivo_excel):
         def cost_cb(f_idx, t_idx):
             f_n, t_n = manager.IndexToNode(f_idx), manager.IndexToNode(t_idx)
             c = calc_tempo_real(f_n, t_n) + data['service_time'][f_n]
-            if t_n != data['depot'] and data['vehicle_preferences'][v_id] and data['locations'][t_n] not in data['vehicle_preferences'][v_id]: c += 45 
+            
+            # CERCA ELÉTRICA 1: Sair da zona de preferência do Motorista
+            if t_n != data['depot'] and data['vehicle_preferences'][v_id] and data['locations'][t_n] not in data['vehicle_preferences'][v_id]: 
+                c += 1500  # Multa gigante para evitar desvios!
+                
+            # CERCA ELÉTRICA 2: Cruzar Macro-Zonas no meio do dia
             if f_n != data['depot'] and t_n != data['depot']:
                 zona_origem = data['zonas_exatas'][f_n]
                 zona_destino = data['zonas_exatas'][t_n]
-                if zona_origem != 'desconhecida' and zona_destino != 'desconhecida' and zona_origem != zona_destino: c += 180 
+                if zona_origem != 'desconhecida' and zona_destino != 'desconhecida' and zona_origem != zona_destino: 
+                    c += 1500 
             return c
         return cost_cb
 
@@ -327,9 +366,23 @@ def processar_rotas(arquivo_excel):
 
     solver = routing.solver()
     
-    # =========================================================
-    # INTELIGÊNCIA DE FILA DA DOCA (Evitar carregamento simultâneo)
-    # =========================================================
+    # ---------------------------------------------------------
+    # RESTRIÇÃO DO SEGUNDO TIRO (Conexão Temporal)
+    # ---------------------------------------------------------
+    num_carros_reais = len(frota_ativa)
+    for i in range(num_carros_reais):
+        v1_idx = i * 2       # Índice da Viagem 1
+        v2_idx = i * 2 + 1   # Índice da Viagem 2
+        
+        end_v1 = time_dim.CumulVar(routing.End(v1_idx))
+        start_v2 = time_dim.CumulVar(routing.Start(v2_idx))
+        
+        # Verifica se o 2º tiro foi ativado (se ele tem clientes alocados)
+        is_v2_active = routing.NextVar(routing.Start(v2_idx)) != routing.End(v2_idx)
+        
+        # A Viagem 2 só pode começar depois do fim da Viagem 1 + 45 min de recarregamento na Doca
+        solver.Add(start_v2 >= end_v1 + (45 * is_v2_active))
+
     intervalos_doca = []
     run_id = str(int(time.time() * 1000)) 
     
@@ -338,7 +391,6 @@ def processar_rotas(arquivo_excel):
         is_active_v = routing.NextVar(routing.Start(v)) != routing.End(v)
         
         inicio_carregamento = solver.Sum([start_v, -45 * is_active_v])
-        
         intervalo_opcional = solver.FixedDurationIntervalVar(0, 1440, 45, True, f"carregamento_opt_{v}_{run_id}")
         
         solver.Add(intervalo_opcional.PerformedExpr() == is_active_v)
@@ -346,7 +398,6 @@ def processar_rotas(arquivo_excel):
 
         intervalos_doca.append(intervalo_opcional)
 
-        # Regras das Puxadas
         for p_start, p_end in data['puxadas']:
             solver.Add(start_v <= (p_start - 45) + start_v >= p_end + (1 - is_active_v) >= 1)
 
@@ -366,7 +417,6 @@ def processar_rotas(arquivo_excel):
         dropped_nodes_info = []
         mapa_linhas = []
 
-        # 1. PEGA AS NOTAS CORTADAS PRIMEIRO
         for node in range(routing.Size()):
             if routing.IsStart(node) or routing.IsEnd(node): continue
             if sol.Value(routing.NextVar(node)) == node:
@@ -380,9 +430,9 @@ def processar_rotas(arquivo_excel):
 
         cores = ['blue', 'green', 'purple', 'orange', 'darkred', 'cadetblue', 'darkgreen', 'black']
         
-        # 2. GERA AS ROTAS DOS MOTORISTAS
         for vehicle_id in range(data['num_vehicles']):
             index = routing.Start(vehicle_id)
+            # Se o veículo (seja Viagem 1 ou 2) não for usado, ignora
             if routing.IsEnd(sol.Value(routing.NextVar(index))): continue 
             
             nome_motorista = data['motoristas'][vehicle_id]
@@ -407,7 +457,6 @@ def processar_rotas(arquivo_excel):
                 rota_coords.append((lon_lat[1], lon_lat[0]))
 
                 if n_idx == 0: 
-                    # Com a fila da doca, a saída já está no horário exato calculado pelo otimizador
                     hora_partida = hora
                     min_partida = minuto
                     dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{hora_partida:02d}:{min_partida:02d}", 'Ação': 'SAÍDA DA BASE', 'NF': '-', 'Cervejaria': '-', 'Cliente': 'BASE DA EMPRESA', 'Bairro': 'BASE', 'Peso (kg)': f"{carga_atual} (Total Carregado)"})
@@ -423,13 +472,12 @@ def processar_rotas(arquivo_excel):
             min_totais = int((8 * 60) + sol.Min(time_var))
             hora_fim = int((min_totais // 60) % 24)
             min_fim = int(min_totais % 60)
-            dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{hora_fim:02d}:{min_fim:02d}", 'Ação': 'FIM DO EXPEDIENTE', 'NF': '-', 'Cervejaria': '-', 'Cliente': 'MOTORISTA LIBERADO', 'Bairro': '-', 'Peso (kg)': f"{carga_atual} (Vazios)"})
+            dados_excel.append({'Motorista / Veículo': f"{nome_motorista} ({carro})", 'Horário': f"{hora_fim:02d}:{min_fim:02d}", 'Ação': 'FIM DA VIAGEM', 'NF': '-', 'Cervejaria': '-', 'Cliente': 'RETORNO À BASE', 'Bairro': '-', 'Peso (kg)': f"{carga_atual} (Vazios)"})
             dados_excel.append({k: "" for k in dados_excel[0].keys()})
             
             if rota_coords:
                 mapa_linhas.append({"motorista": nome_motorista, "coords": rota_coords, "cor": cores[vehicle_id % len(cores)]})
 
-        # Adiciona as notas cortadas ao final do Excel de exportação também
         if dropped_nodes_info:
             if dados_excel: dados_excel.append({k: "" for k in dados_excel[0].keys()}) 
             dados_excel.append({'Motorista / Veículo': '--- NOTAS CORTADAS ---', 'Horário': '---', 'Ação': '---', 'NF': '---', 'Cervejaria': '---', 'Cliente': '---', 'Bairro': '---', 'Peso (kg)': '---'})
@@ -450,22 +498,20 @@ def processar_rotas(arquivo_excel):
 # FRONTEND / INTERFACE DE USUÁRIO (UI)
 # =========================================================
 
-# Centraliza a Logo da STPP no topo da tela
-# Alteração nas proporções das colunas para reduzir drasticamente o tamanho da logo mantendo-a centralizada
 col1, col2, col3 = st.columns([3, 1, 3])
 with col2:
     try:
-        st.image("logo.png", use_container_width=True)
-    except:
+        from PIL import Image
+        img = Image.open("logo.png")
+        st.image(img, use_container_width=True)
+    except Exception as e:
         pass
 
-# Removido o emoji de caminhao do título
 st.markdown("<h1 style='text-align: center;'>Roteirizador Web</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Carregue a planilha de <b>pedidos e frota</b> para desenhar as rotas automaticamente.</p>", unsafe_allow_html=True)
 
 arquivo_upload = st.file_uploader("Arraste a sua planilha Excel (romaneio_teste.xlsx) aqui", type=["xlsx"])
 
-# INICIALIZA A MEMÓRIA DA TELA
 if 'rotas_geradas' not in st.session_state:
     st.session_state.rotas_geradas = False
 
@@ -482,18 +528,14 @@ if arquivo_upload is not None:
             else:
                 st.error(f"Ocorreu um erro no cálculo: {linhas_mapa}")
 
-    # SE AS ROTAS ESTÃO NA MEMÓRIA, MOSTRA NA TELA
     if st.session_state.rotas_geradas:
         st.success("Roteamento concluído com sucesso!")
         
-        # EXIBIÇÃO CLARA E DESTACADA DAS NOTAS CORTADAS NO TOPO DA TELA
         if st.session_state.notas_cortadas:
             st.error(f"🚨 ATENÇÃO: {len(st.session_state.notas_cortadas)} notas foram deixadas na base devido ao limite de tempo ou capacidade!")
-            # Cria um dataframe apenas para exibir as notas cortadas na tela
             df_cortadas = pd.DataFrame(st.session_state.notas_cortadas)
-            st.table(df_cortadas) # Renderiza uma tabela super visível
+            st.table(df_cortadas) 
         else:
-            # AVISO VERDE DE SUCESSO ABSOLUTO (Para não gerar dúvidas!)
             st.success("🎉 Excelente notícia: 100% das notas foram roteirizadas! Nenhuma carga ficou para trás na Doca.")
             
         col1, col2 = st.columns([1, 1])
