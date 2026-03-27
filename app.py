@@ -34,7 +34,6 @@ def limpar_nome_cliente(nome):
 
 def limpar_bairro(bairro_cru):
     b = remover_acentos(str(bairro_cru))
-    # Limpeza de variações que atrapalham o reconhecimento
     b = b.replace('/ nit', '').replace('/nit', '').replace(' (jacarepagua)', '').strip()
     if b == "freguesia jacarepagua": return "freguesia"
     return b
@@ -207,9 +206,7 @@ def processar_rotas(arquivo_excel):
 
     data = {'motoristas': [], 'veiculos': [], 'vehicle_capacities': [], 'vehicle_costs': [], 'vehicle_start_times': [], 'vehicle_preferences': []}
     
-    # ---------------------------------------------------------
-    # NOVIDADE: CLONAGEM DE FROTA (O SEGUNDO TIRO)
-    # ---------------------------------------------------------
+    # CLONAGEM DE FROTA SEM PARADOXOS TEMPORAIS
     for _, row in frota_ativa.iterrows():
         mot = str(row['motorista']).title()
         veic = str(row['veiculo']).title()
@@ -226,7 +223,7 @@ def processar_rotas(arquivo_excel):
                     for bm in MACRO_ZONAS[z]:
                         if bm in mapa_indices: prefs.add(mapa_indices[bm])
 
-        # Cria a Viagem 1 (Prioridade Total)
+        # Viagem 1 (Prioridade Total)
         data['motoristas'].append(f"{mot} [Viagem 1]")
         data['veiculos'].append(veic)
         data['vehicle_capacities'].append(cap)
@@ -234,16 +231,15 @@ def processar_rotas(arquivo_excel):
         data['vehicle_costs'].append(cost)
         data['vehicle_preferences'].append(prefs)
 
-        # Cria a Viagem 2 (Segundo Tiro)
+        # Viagem 2 (Segundo Tiro)
         data['motoristas'].append(f"{mot} [Viagem 2]")
         data['veiculos'].append(veic)
         data['vehicle_capacities'].append(cap)
-        data['vehicle_start_times'].append(start_t) # O solver vai amarrar isso depois
-        data['vehicle_costs'].append(cost + 200) # Custa um pouco mais usar o segundo tiro para ele priorizar encher a Viagem 1
+        data['vehicle_start_times'].append(start_t) # O solver vai amarrar isso dinamicamente à chegada do V1!
+        data['vehicle_costs'].append(cost + 500) 
         data['vehicle_preferences'].append(prefs)
 
     data['num_vehicles'] = len(data['motoristas'])
-
     data['puxadas'] = puxadas
     data['time_matrix'] = matriz_tempos_real
     data['locations'] = [0]
@@ -314,7 +310,9 @@ def processar_rotas(arquivo_excel):
 
     def time_cb(from_idx, to_idx): return calc_tempo_horario(manager.IndexToNode(from_idx), manager.IndexToNode(to_idx)) + data['service_time'][manager.IndexToNode(from_idx)]
     time_cb_idx = routing.RegisterTransitCallback(time_cb)
-    routing.AddDimension(time_cb_idx, 1440, 1440, False, 'Time')
+    
+    # EXPANSÃO DO RELÓGIO (48 HORAS) PARA EVITAR QUE A VIAGEM 2 CRASHE O SISTEMA
+    routing.AddDimension(time_cb_idx, 2880, 2880, False, 'Time')
     time_dim = routing.GetDimensionOrDie('Time')
 
     def create_cost_cb(v_id):
@@ -324,7 +322,7 @@ def processar_rotas(arquivo_excel):
             
             # CERCA ELÉTRICA 1: Sair da zona de preferência do Motorista
             if t_n != data['depot'] and data['vehicle_preferences'][v_id] and data['locations'][t_n] not in data['vehicle_preferences'][v_id]: 
-                c += 1500  # Multa gigante para evitar desvios!
+                c += 1500  
                 
             # CERCA ELÉTRICA 2: Cruzar Macro-Zonas no meio do dia
             if f_n != data['depot'] and t_n != data['depot']:
@@ -360,28 +358,25 @@ def processar_rotas(arquivo_excel):
         
     for v in range(data['num_vehicles']):
         idx_saida = routing.Start(v)
-        time_dim.CumulVar(idx_saida).SetRange(int(data['vehicle_start_times'][v]), 1440)
+        time_dim.CumulVar(idx_saida).SetRange(int(data['vehicle_start_times'][v]), 2880)
         routing.AddVariableMinimizedByFinalizer(time_dim.CumulVar(idx_saida))
         routing.AddVariableMinimizedByFinalizer(time_dim.CumulVar(routing.End(v)))
 
     solver = routing.solver()
-    
-    # ---------------------------------------------------------
-    # RESTRIÇÃO DO SEGUNDO TIRO (Conexão Temporal)
-    # ---------------------------------------------------------
+
+    # O PULO DO GATO (A LIGAÇÃO REAL DE TEMPO E RETORNO À BASE)
     num_carros_reais = len(frota_ativa)
     for i in range(num_carros_reais):
         v1_idx = i * 2       # Índice da Viagem 1
         v2_idx = i * 2 + 1   # Índice da Viagem 2
         
+        # A hora exata que a Viagem 1 terminou e o motorista ESTACIONOU na Doca
         end_v1 = time_dim.CumulVar(routing.End(v1_idx))
+        # A hora exata que a Viagem 2 VAI SAIR da Doca
         start_v2 = time_dim.CumulVar(routing.Start(v2_idx))
         
-        # Verifica se o 2º tiro foi ativado (se ele tem clientes alocados)
-        is_v2_active = routing.NextVar(routing.Start(v2_idx)) != routing.End(v2_idx)
-        
-        # A Viagem 2 só pode começar depois do fim da Viagem 1 + 45 min de recarregamento na Doca
-        solver.Add(start_v2 >= end_v1 + (45 * is_v2_active))
+        # O Cérebro obriga a Viagem 2 a sair apenas depois da Viagem 1 chegar + 45 min de carga!
+        solver.Add(start_v2 >= end_v1 + 45)
 
     intervalos_doca = []
     run_id = str(int(time.time() * 1000)) 
@@ -391,7 +386,7 @@ def processar_rotas(arquivo_excel):
         is_active_v = routing.NextVar(routing.Start(v)) != routing.End(v)
         
         inicio_carregamento = solver.Sum([start_v, -45 * is_active_v])
-        intervalo_opcional = solver.FixedDurationIntervalVar(0, 1440, 45, True, f"carregamento_opt_{v}_{run_id}")
+        intervalo_opcional = solver.FixedDurationIntervalVar(0, 2880, 45, True, f"carregamento_opt_{v}_{run_id}")
         
         solver.Add(intervalo_opcional.PerformedExpr() == is_active_v)
         solver.Add(intervalo_opcional.StartExpr() == inicio_carregamento.Var())
@@ -404,7 +399,7 @@ def processar_rotas(arquivo_excel):
     solver.Add(solver.DisjunctiveConstraint(intervalos_doca, f"Fila_da_Doca_{run_id}"))
 
     params = pywrapcp.DefaultRoutingSearchParameters()
-    params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    params.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
     params.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     params.time_limit.seconds = 30 
     
@@ -432,7 +427,6 @@ def processar_rotas(arquivo_excel):
         
         for vehicle_id in range(data['num_vehicles']):
             index = routing.Start(vehicle_id)
-            # Se o veículo (seja Viagem 1 ou 2) não for usado, ignora
             if routing.IsEnd(sol.Value(routing.NextVar(index))): continue 
             
             nome_motorista = data['motoristas'][vehicle_id]
