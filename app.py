@@ -16,7 +16,7 @@ import os
 st.set_page_config(page_title="Roteirizador Logístico", page_icon="🚛", layout="wide")
 
 # =========================================================
-# 1. OS TRADUTORES DE DADOS, HORÁRIOS E NOMES
+# 1. OS TRADUTORES DE DADOS E NOMES
 # =========================================================
 def remover_acentos(texto):
     try:
@@ -206,13 +206,18 @@ def processar_rotas(arquivo_excel):
 
     data = {'motoristas': [], 'veiculos': [], 'vehicle_capacities': [], 'vehicle_costs': [], 'vehicle_start_times': [], 'vehicle_preferences': []}
     
-    # CLONAGEM DE FROTA SEM PARADOXOS TEMPORAIS
+    # =========================================================
+    # O SEGREDO DOS CUSTOS: Forçar o Camião Cheio e Evitar o 2º Tiro
+    # =========================================================
     for _, row in frota_ativa.iterrows():
         mot = str(row['motorista']).title()
         veic = str(row['veiculo']).title()
         cap = int(pd.to_numeric(row['capacidade'], errors='coerce'))
         start_t = traduzir_hora_inicio(row['inicio'])
-        cost = 100 if int(pd.to_numeric(row.get('prioridade', 1), errors='coerce')) == 1 else 100000
+        
+        # Custo base de um carro titular (Viagem 1)
+        is_prioridade = int(pd.to_numeric(row.get('prioridade', 1), errors='coerce')) == 1
+        custo_v1 = 10000 if is_prioridade else 50000
         
         prefs = set()
         col_pref = 'preferência' if 'preferência' in frota_ativa.columns else 'preferencia' if 'preferencia' in frota_ativa.columns else None
@@ -223,20 +228,20 @@ def processar_rotas(arquivo_excel):
                     for bm in MACRO_ZONAS[z]:
                         if bm in mapa_indices: prefs.add(mapa_indices[bm])
 
-        # Viagem 1 (Prioridade Total)
+        # VIAGEM 1 (Obrigatório encher primeiro)
         data['motoristas'].append(f"{mot} [Viagem 1]")
         data['veiculos'].append(veic)
         data['vehicle_capacities'].append(cap)
         data['vehicle_start_times'].append(start_t)
-        data['vehicle_costs'].append(cost)
+        data['vehicle_costs'].append(custo_v1)
         data['vehicle_preferences'].append(prefs)
 
-        # Viagem 2 (Segundo Tiro)
+        # VIAGEM 2 (O Robô tem pavor de usar isso - Custo Extremo de 500 mil)
         data['motoristas'].append(f"{mot} [Viagem 2]")
         data['veiculos'].append(veic)
         data['vehicle_capacities'].append(cap)
-        data['vehicle_start_times'].append(start_t) # O solver vai amarrar isso dinamicamente à chegada do V1!
-        data['vehicle_costs'].append(cost + 500) 
+        data['vehicle_start_times'].append(start_t)
+        data['vehicle_costs'].append(custo_v1 + 500000) 
         data['vehicle_preferences'].append(prefs)
 
     data['num_vehicles'] = len(data['motoristas'])
@@ -292,7 +297,7 @@ def processar_rotas(arquivo_excel):
     
     data['depot'] = 0
 
-    status_text.text("🧠 Otimizando a matemática de rotas (Múltiplos Tiros)...")
+    status_text.text("🧠 Otimizando a matemática de rotas (Minimizando Carros)...")
     manager = pywrapcp.RoutingIndexManager(len(data['time_windows']), data['num_vehicles'], data['depot'])
     routing = pywrapcp.RoutingModel(manager)
 
@@ -311,7 +316,6 @@ def processar_rotas(arquivo_excel):
     def time_cb(from_idx, to_idx): return calc_tempo_horario(manager.IndexToNode(from_idx), manager.IndexToNode(to_idx)) + data['service_time'][manager.IndexToNode(from_idx)]
     time_cb_idx = routing.RegisterTransitCallback(time_cb)
     
-    # EXPANSÃO DO RELÓGIO (48 HORAS) PARA EVITAR QUE A VIAGEM 2 CRASHE O SISTEMA
     routing.AddDimension(time_cb_idx, 2880, 2880, False, 'Time')
     time_dim = routing.GetDimensionOrDie('Time')
 
@@ -320,16 +324,15 @@ def processar_rotas(arquivo_excel):
             f_n, t_n = manager.IndexToNode(f_idx), manager.IndexToNode(t_idx)
             c = calc_tempo_real(f_n, t_n) + data['service_time'][f_n]
             
-            # CERCA ELÉTRICA 1: Sair da zona de preferência do Motorista
+            # CERCA ELÉTRICA ATENUADA: Penalidade é chata (180), mas muito menor que o preço de um carro (10.000)
             if t_n != data['depot'] and data['vehicle_preferences'][v_id] and data['locations'][t_n] not in data['vehicle_preferences'][v_id]: 
-                c += 1500  
+                c += 180  
                 
-            # CERCA ELÉTRICA 2: Cruzar Macro-Zonas no meio do dia
             if f_n != data['depot'] and t_n != data['depot']:
                 zona_origem = data['zonas_exatas'][f_n]
                 zona_destino = data['zonas_exatas'][t_n]
                 if zona_origem != 'desconhecida' and zona_destino != 'desconhecida' and zona_origem != zona_destino: 
-                    c += 1500 
+                    c += 120 
             return c
         return cost_cb
 
@@ -364,18 +367,14 @@ def processar_rotas(arquivo_excel):
 
     solver = routing.solver()
 
-    # O PULO DO GATO (A LIGAÇÃO REAL DE TEMPO E RETORNO À BASE)
     num_carros_reais = len(frota_ativa)
     for i in range(num_carros_reais):
-        v1_idx = i * 2       # Índice da Viagem 1
-        v2_idx = i * 2 + 1   # Índice da Viagem 2
+        v1_idx = i * 2       
+        v2_idx = i * 2 + 1   
         
-        # A hora exata que a Viagem 1 terminou e o motorista ESTACIONOU na Doca
         end_v1 = time_dim.CumulVar(routing.End(v1_idx))
-        # A hora exata que a Viagem 2 VAI SAIR da Doca
         start_v2 = time_dim.CumulVar(routing.Start(v2_idx))
         
-        # O Cérebro obriga a Viagem 2 a sair apenas depois da Viagem 1 chegar + 45 min de carga!
         solver.Add(start_v2 >= end_v1 + 45)
 
     intervalos_doca = []
