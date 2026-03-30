@@ -6,6 +6,7 @@ import re
 import requests
 import time
 import unicodedata
+import math
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import os
@@ -16,7 +17,7 @@ import os
 st.set_page_config(page_title="Roteirizador Logístico", page_icon="🚛", layout="wide")
 
 # =========================================================
-# 1. OS TRADUTORES DE DADOS E NOMES
+# 1. OS TRADUTORES DE DADOS, HORÁRIOS E NOMES
 # =========================================================
 def remover_acentos(texto):
     try:
@@ -137,7 +138,7 @@ def obter_coordenadas(bairro_exato):
     bairro_limpo = limpar_bairro(bairro_exato.split(',')[0])
     if bairro_limpo in COORDENADAS_RJ: return COORDENADAS_RJ[bairro_limpo][0], COORDENADAS_RJ[bairro_limpo][1]
     try:
-        r = requests.get(f"https://nominatim.openstreetmap.org/search?q={bairro_exato}, Rio de Janeiro, Brasil&format=json&limit=1", headers={'User-Agent': 'STPP_Web/1.0'}, timeout=10)
+        r = requests.get(f"https://nominatim.openstreetmap.org/search?q={bairro_exato}, Rio de Janeiro, Brasil&format=json&limit=1", headers={'User-Agent': 'STPP_Web/1.0'}, timeout=5)
         dados = r.json()
         if dados: 
             time.sleep(1)
@@ -145,14 +146,44 @@ def obter_coordenadas(bairro_exato):
     except: pass
     return None, None
 
+def haversine_dist(lon1, lat1, lon2, lat2):
+    # Calcula a distância em linha reta na Terra (Fórmula de Haversine)
+    R = 6371 # Raio da Terra em km
+    dLat = math.radians(lat2 - lat1)
+    dLon = math.radians(lon2 - lon1)
+    a = math.sin(dLat/2) * math.sin(dLat/2) + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon/2) * math.sin(dLon/2)
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
+
 def gerar_matriz_osrm(coordenadas):
     coords_str = ";".join([f"{lon},{lat}" for lon, lat in coordenadas])
-    try:
-        r = requests.get(f"http://router.project-osrm.org/table/v1/driving/{coords_str}?annotations=duration", timeout=15)
-        dados = r.json()
-        if dados.get('code') == 'Ok': return [[int((val / 60) * 3) for val in row] for row in dados['durations']]
-    except: pass
-    return None
+    
+    # 1. TENTA O SERVIDOR PÚBLICO COM RETENTATIVAS (Timeout de 20s)
+    for tentativa in range(2):
+        try:
+            r = requests.get(f"http://router.project-osrm.org/table/v1/driving/{coords_str}?annotations=duration", timeout=20)
+            dados = r.json()
+            if dados.get('code') == 'Ok': return [[int((val / 60) * 3) for val in row] for row in dados['durations']]
+        except:
+            time.sleep(2) # Respira e tenta de novo
+            
+    # 2. PLANO B (FALLBACK MATEMÁTICO) - Se o OSRM cair, calcula localmente!
+    matriz_fallback = []
+    for i in range(len(coordenadas)):
+        linha = []
+        for j in range(len(coordenadas)):
+            if i == j:
+                linha.append(0)
+            else:
+                dist_km = haversine_dist(coordenadas[i][0], coordenadas[i][1], coordenadas[j][0], coordenadas[j][1])
+                # Multiplica por fator 1.5 (curvas de ruas) e considera vel média de 25km/h no RJ (2.4 min/km)
+                tempo_estimado = int((dist_km * 1.5) * 2.4)
+                linha.append(tempo_estimado)
+        matriz_fallback.append(linha)
+    
+    # Adicionamos um aviso de que o plano B foi ativado
+    st.session_state.aviso_fallback = True
+    return matriz_fallback
 
 # =========================================================
 # 3. CONSTRUÇÃO DO MODELO & PROCESSAMENTO
@@ -196,26 +227,23 @@ def processar_rotas(arquivo_excel):
         mapa_indices[limpar_bairro(bairro)] = i + 1
         progress_bar.progress((i + 1) / len(bairros_unicos) * 0.4)
 
-    status_text.text("🚦 Calculando rotas de trânsito reais...")
+    status_text.text("🚦 Calculando rotas de trânsito...")
+    st.session_state.aviso_fallback = False
     matriz_tempos_real = gerar_matriz_osrm(coordenadas)
     
     if not matriz_tempos_real: 
-        return None, "Servidor de trânsito (OSRM) está fora do ar ou não respondeu a tempo.", []
+        return None, "Erro crítico ao tentar calcular as distâncias matemáticas.", []
     
     progress_bar.progress(0.6)
 
     data = {'motoristas': [], 'veiculos': [], 'vehicle_capacities': [], 'vehicle_costs': [], 'vehicle_start_times': [], 'vehicle_preferences': []}
     
-    # =========================================================
-    # O SEGREDO DOS CUSTOS: Forçar o Camião Cheio e Evitar o 2º Tiro
-    # =========================================================
     for _, row in frota_ativa.iterrows():
         mot = str(row['motorista']).title()
         veic = str(row['veiculo']).title()
         cap = int(pd.to_numeric(row['capacidade'], errors='coerce'))
         start_t = traduzir_hora_inicio(row['inicio'])
         
-        # Custo base de um carro titular (Viagem 1)
         is_prioridade = int(pd.to_numeric(row.get('prioridade', 1), errors='coerce')) == 1
         custo_v1 = 10000 if is_prioridade else 50000
         
@@ -228,7 +256,6 @@ def processar_rotas(arquivo_excel):
                     for bm in MACRO_ZONAS[z]:
                         if bm in mapa_indices: prefs.add(mapa_indices[bm])
 
-        # VIAGEM 1 (Obrigatório encher primeiro)
         data['motoristas'].append(f"{mot} [Viagem 1]")
         data['veiculos'].append(veic)
         data['vehicle_capacities'].append(cap)
@@ -236,7 +263,6 @@ def processar_rotas(arquivo_excel):
         data['vehicle_costs'].append(custo_v1)
         data['vehicle_preferences'].append(prefs)
 
-        # VIAGEM 2 (O Robô tem pavor de usar isso - Custo Extremo de 500 mil)
         data['motoristas'].append(f"{mot} [Viagem 2]")
         data['veiculos'].append(veic)
         data['vehicle_capacities'].append(cap)
@@ -297,7 +323,7 @@ def processar_rotas(arquivo_excel):
     
     data['depot'] = 0
 
-    status_text.text("🧠 Otimizando a matemática de rotas (Minimizando Carros)...")
+    status_text.text("🧠 Otimizando a matemática de rotas...")
     manager = pywrapcp.RoutingIndexManager(len(data['time_windows']), data['num_vehicles'], data['depot'])
     routing = pywrapcp.RoutingModel(manager)
 
@@ -324,7 +350,6 @@ def processar_rotas(arquivo_excel):
             f_n, t_n = manager.IndexToNode(f_idx), manager.IndexToNode(t_idx)
             c = calc_tempo_real(f_n, t_n) + data['service_time'][f_n]
             
-            # CERCA ELÉTRICA ATENUADA: Penalidade é chata (180), mas muito menor que o preço de um carro (10.000)
             if t_n != data['depot'] and data['vehicle_preferences'][v_id] and data['locations'][t_n] not in data['vehicle_preferences'][v_id]: 
                 c += 180  
                 
@@ -524,6 +549,9 @@ if arquivo_upload is not None:
     if st.session_state.rotas_geradas:
         st.success("Roteamento concluído com sucesso!")
         
+        if getattr(st.session_state, 'aviso_fallback', False):
+            st.warning("⚠️ **ATENÇÃO:** O servidor de trânsito público (OSRM) não respondeu a tempo. Para evitar a paralisação da operação, as distâncias foram estimadas via fórmula matemática (Haversine). Os tempos podem apresentar pequenas variações da realidade.")
+
         if st.session_state.notas_cortadas:
             st.error(f"🚨 ATENÇÃO: {len(st.session_state.notas_cortadas)} notas foram deixadas na base devido ao limite de tempo ou capacidade!")
             df_cortadas = pd.DataFrame(st.session_state.notas_cortadas)
