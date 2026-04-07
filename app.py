@@ -131,7 +131,17 @@ COORDENADAS_RJ = {
     'jardim guanabara': (-43.2017, -22.8167), 'higienopolis': (-43.2614, -22.8711), 'saude': (-43.1844, -22.8958), 'gamboa': (-43.1933, -22.8972), 
     'joa': (-43.2917, -23.0133), 'sao joao de meriti': (-43.3719, -22.8028),
     'anil': (-43.3364, -22.9567), 'grumari': (-43.5208, -23.0483), 'vicente de carvalho': (-43.3131, -22.8522),
-    'todos os santos': (-43.2808, -22.8953), 'iraja': (-43.3267, -22.8278), 'varzea das mocas': (-43.0181, -22.8942), 'parque do flamengo': (-43.1741, -22.9328)
+    'todos os santos': (-43.2808, -22.8953), 'iraja': (-43.3267, -22.8278), 'varzea das mocas': (-43.0181, -22.8942), 'parque do flamengo': (-43.1741, -22.9328),
+    'barra de guaratiba': (-43.5658, -23.0189),
+    'ribeira': (-43.1706, -22.8256),
+    'ilha do governador': (-43.2036, -22.8064),
+    'bangu': (-43.4644, -22.8756),
+    'vila valqueire': (-43.3642, -22.8886),
+    'campo grande': (-43.5594, -22.9022),
+    'bento ribeiro': (-43.3619, -22.8683),
+    'vargem pequena': (-43.4608, -22.9961),
+    'sepetiba': (-43.6978, -22.9692),
+    'praca da bandeira': (-43.2131, -22.9125)
 }
 
 def obter_coordenadas(bairro_exato):
@@ -222,7 +232,12 @@ def processar_rotas(arquivo_excel):
     for i, bairro in enumerate(bairros_unicos):
         status_text.text(f"📍 Mapeando bairro via GPS: {bairro}")
         blon, blat = obter_coordenadas(bairro)
-        if not blon: blon, blat = lon_base + 0.05, lat_base + 0.05 
+        
+        # Correção ativada: Afasta coordenadas matematicamente se não achar o bairro
+        if not blon: 
+            blon = lon_base + (0.01 * (i + 1))
+            blat = lat_base + (0.01 * (i + 1))
+            
         coordenadas.append((blon, blat))
         mapa_indices[limpar_bairro(bairro)] = i + 1
         progress_bar.progress((i + 1) / len(bairros_unicos) * 0.4)
@@ -418,7 +433,7 @@ def processar_rotas(arquivo_excel):
         intervalos_doca.append(intervalo_opcional)
 
         for p_start, p_end in data['puxadas']:
-            solver.Add(start_v <= (p_start - 45) + start_v >= p_end + (1 - is_active_v) >= 1)
+            solver.Add(start_start <= (p_start - 45) + start_v >= p_end + (1 - is_active_v) >= 1)
 
     solver.Add(solver.DisjunctiveConstraint(intervalos_doca, f"Fila_da_Doca_{run_id}"))
 
