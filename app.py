@@ -433,7 +433,7 @@ def processar_rotas(arquivo_excel):
         intervalos_doca.append(intervalo_opcional)
 
         for p_start, p_end in data['puxadas']:
-            solver.Add(start_start <= (p_start - 45) + start_v >= p_end + (1 - is_active_v) >= 1)
+            solver.Add(start_v <= (p_start - 45) + start_v >= p_end + (1 - is_active_v) >= 1)
 
     solver.Add(solver.DisjunctiveConstraint(intervalos_doca, f"Fila_da_Doca_{run_id}"))
 
